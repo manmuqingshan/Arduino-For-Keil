@@ -1,6 +1,6 @@
 /*
  * MIT License
- * Copyright (c) 2017 - 2022 _VIFEXTech
+ * Copyright (c) 2017 - 2025 _VIFEXTech
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,7 @@
 #ifndef __DELAY_H
 #define __DELAY_H
 
-#include "mcu_type.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {

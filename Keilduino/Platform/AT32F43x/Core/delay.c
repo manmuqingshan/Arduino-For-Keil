@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 #include "delay.h"
+#include "mcu_type.h"
 
 #ifndef SYSTICK_TICK_FREQ
 #  define SYSTICK_TICK_FREQ     1000 // Hz
