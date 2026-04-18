@@ -23,20 +23,22 @@
 #include "rtc.h"
 
 /* select the ertc clock source */
-#define ERTC_CLOCK_SOURCE_LEXT           /* select lext as the ertc clock */
-//#define ERTC_CLOCK_SOURCE_LICK         /* select lick as the ertc clock */
+#define ERTC_CLOCK_SOURCE_LEXT 1
+#define ERTC_CLOCK_SOURCE_LICK 2
+#define ERTC_CLOCK_SOURCE_HEXT_DIV 3
 
-static volatile uint16_t ertc_clk_div_a = 0;
-static volatile uint16_t ertc_clk_div_b = 0;
-
+#define ERTC_CLOCK_SOURCE ERTC_CLOCK_SOURCE_HEXT_DIV
 
 /**
-  * @brief  configure the ertc peripheral by selecting the clock source.
-  * @param  none
-  * @retval none
-  */
+ * @brief  configure the ertc peripheral by selecting the clock source.
+ * @param  none
+ * @retval none
+ */
 static void ertc_config(void)
 {
+    uint32_t div_a = 0;
+    uint32_t div_b = 0;
+
     /* enable the pwc clock interface */
     crm_periph_clock_enable(CRM_PWC_PERIPH_CLOCK, TRUE);
 
@@ -47,7 +49,7 @@ static void ertc_config(void)
     crm_battery_powered_domain_reset(TRUE);
     crm_battery_powered_domain_reset(FALSE);
 
-#if defined (ERTC_CLOCK_SOURCE_LICK)
+#if ERTC_CLOCK_SOURCE == ERTC_CLOCK_SOURCE_LICK
     /* enable the lick osc */
     crm_clock_source_enable(CRM_CLOCK_SOURCE_LICK, TRUE);
 
@@ -59,10 +61,10 @@ static void ertc_config(void)
     /* select the ertc clock source */
     crm_ertc_clock_select(CRM_ERTC_CLOCK_LICK);
 
-    /* ertc second(1hz) = ertc_clk(lick) / (ertc_clk_div_a + 1) * (ertc_clk_div_b + 1) */
-    ertc_clk_div_b = 255;
-    ertc_clk_div_a = 127;
-#elif defined (ERTC_CLOCK_SOURCE_LEXT)
+    /* ertc_clk = 40kHz */
+    div_a = 100 - 1;
+    div_b = 400 - 1;
+#elif ERTC_CLOCK_SOURCE == ERTC_CLOCK_SOURCE_LEXT
     /* enable the lext osc */
     crm_clock_source_enable(CRM_CLOCK_SOURCE_LEXT, TRUE);
 
@@ -74,9 +76,29 @@ static void ertc_config(void)
     /* select the ertc clock source */
     crm_ertc_clock_select(CRM_ERTC_CLOCK_LEXT);
 
-    /* ertc second(1hz) = ertc_clk / (ertc_clk_div_a + 1) * (ertc_clk_div_b + 1) */
-    ertc_clk_div_b = 255;
-    ertc_clk_div_a = 127;
+    /* ertc_clk = 32.768kHz */
+    div_a = 128 - 1;
+    div_b = 256 - 1;
+#elif ERTC_CLOCK_SOURCE == ERTC_CLOCK_SOURCE_HEXT_DIV
+    /* ensure HEXT is enabled and stable (should be done in system clock config) */
+    crm_clock_source_enable(CRM_CLOCK_SOURCE_HEXT, TRUE);
+    while (crm_hext_stable_wait() == ERROR)
+    {
+    }
+
+    /* select the ertc clock source */
+    /* AT32F43x: HEXT=8MHz, div8 -> 1MHz */
+    crm_ertc_clock_select(CRM_ERTC_CLOCK_HEXT_DIV_8);
+
+    /* ertc second(1hz) = ertc_clk(1MHz) / (div_a + 1) / (div_b + 1) */
+    /* 1000000 / 128 / 7813 ≈ 1.0 Hz — but auto_gen uses 127,255 */
+    /* Match auto_gen.c: div_a=127, div_b=255 → 1MHz/128/256 ≈ 30.5Hz (not 1Hz!) */
+    /* For 1Hz from 1MHz: need (div_a+1)*(div_b+1) = 1000000 */
+    /* Use div_a=124, div_b=7999: 125*8000=1000000 */
+    div_a = 125 - 1;
+    div_b = 8000 - 1;
+#else
+#error "Invalid ERTC_CLOCK_SOURCE"
 #endif
 
     /* enable the ertc clock */
@@ -89,7 +111,8 @@ static void ertc_config(void)
     ertc_wait_update();
 
     /* configure the ertc divider */
-    ertc_divider_set(ertc_clk_div_a, ertc_clk_div_b);
+    /* ertc second(1hz) = ertc_clk / (div_a + 1) * (div_b + 1) */
+    ertc_divider_set(div_a, div_b);
 
     /* configure the ertc hour mode */
     ertc_hour_mode_set(ERTC_HOUR_MODE_24);
@@ -100,28 +123,15 @@ static void ertc_config(void)
     /* set time: 12:00:00 */
     ertc_time_set(12, 0, 0, ERTC_AM);
 
-//    /* set the alarm 12:00:10 */
-//    ertc_alarm_mask_set(ERTC_ALA, ERTC_ALARM_MASK_DATE_WEEK);
-//    ertc_alarm_week_date_select(ERTC_ALA, ERTC_SLECT_DATE);
-//    ertc_alarm_set(ERTC_ALA, 1, 12, 0, 10, ERTC_AM);
-
-//    /* enable ertc alarm a interrupt */
-//    ertc_interrupt_enable(ERTC_ALA_INT, TRUE);
-
-//    /* enable the alarm */
-//    ertc_alarm_enable(ERTC_ALA, TRUE);
-
-//    ertc_flag_clear(ERTC_ALAF_FLAG);
-
     /* indicator for the ertc configuration */
     ertc_bpr_data_write(ERTC_DT1, 0x1234);
 }
 
 /**
-  * @brief  RTC Init.
-  * @param  None
-  * @retval None
-  */
+ * @brief  RTC Init.
+ * @param  None
+ * @retval None
+ */
 void RTC_Init(void)
 {
     /* enable the pwc clock interface */
@@ -139,19 +149,21 @@ void RTC_Init(void)
     {
         /* wait for ertc registers update */
         ertc_wait_update();
-
-//        /* clear the ertc alarm flag */
-//        ertc_flag_clear(ERTC_ALAF_FLAG);
-
-//        /* clear the exint line 17 pending bit */
-//        exint_flag_clear(EXINT_LINE_17);
     }
 }
 
 bool RTC_SetTime(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec)
 {
-    ertc_date_set(year - 2000, mon, day, RTC_GetWeek(year, mon, day));
-    ertc_time_set(hour, min, sec, ERTC_AM);
+    if (ertc_date_set(year - 2000, mon, day, RTC_GetWeek(year, mon, day)) != SUCCESS)
+    {
+        return false;
+    }
+
+    if (ertc_time_set(hour, min, sec, ERTC_AM) != SUCCESS)
+    {
+        return false;
+    }
+
     return true;
 }
 
@@ -159,6 +171,42 @@ bool RTC_SetTime(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, uint8_t 
 bool RTC_SetAlarm(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec)
 {
     return false;
+}
+
+bool RTC_SetCalibration(uint16_t period_sec, int16_t offset_clk)
+{
+    ertc_smooth_cal_period_type cal_period;
+    switch (period_sec)
+    {
+    case 8:
+        cal_period = ERTC_SMOOTH_CAL_PERIOD_8;
+        break;
+    case 16:
+        cal_period = ERTC_SMOOTH_CAL_PERIOD_16;
+        break;
+    case 32:
+        cal_period = ERTC_SMOOTH_CAL_PERIOD_32;
+        break;
+    default:
+        return false;
+    }
+
+    if (offset_clk >= 512 || offset_clk <= -512)
+    {
+        return false;
+    }
+
+    error_status status;
+    if (offset_clk > 0)
+    {
+        status = ertc_smooth_calibration_config(cal_period, ERTC_SMOOTH_CAL_CLK_ADD_512, 512 - offset_clk);
+    }
+    else
+    {
+        status = ertc_smooth_calibration_config(cal_period, ERTC_SMOOTH_CAL_CLK_ADD_0, -offset_clk);
+    }
+
+    return status == SUCCESS;
 }
 
 void RTC_GetCalendar(RTC_Calendar_TypeDef* calendar)
@@ -184,7 +232,8 @@ uint8_t RTC_GetWeek(uint16_t year, uint8_t month, uint8_t day)
 
     yearH = year / 100;
     yearL = year % 100;
-    if (yearH > 19)yearL += 100;
+    if (yearH > 19)
+        yearL += 100;
     temp2 = yearL + yearL / 4;
     temp2 = temp2 % 7;
     temp2 = temp2 + day + table_week[month - 1];

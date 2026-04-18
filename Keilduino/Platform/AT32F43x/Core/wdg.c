@@ -46,7 +46,7 @@ uint32_t WDG_SetTimeout(uint32_t timeout)
      */
     const uint32_t lick_freq = 40000;
 
-    for(int i = 0; i < sizeof(div_map) / sizeof(wdt_division_type); i++)
+    for(int i = 0; i < (int)(sizeof(div_map) / sizeof(wdt_division_type)); i++)
     {
         int div = 4 << i;
         reload_value = (uint64_t)timeout * lick_freq / div / 1000;
@@ -84,6 +84,9 @@ uint32_t WDG_SetTimeout(uint32_t timeout)
 
 void WDG_SetEnable(void)
 {
+    /* freeze WDT when debugger halts the core */
+    debug_apb1_periph_mode_set(DEBUG_WDT_PAUSE, TRUE);
+
     /* enable wdt */
     wdt_enable();
 }

@@ -197,6 +197,8 @@ void ADC_DMA_Init(void)
 
     adc_calibration_start(ADC1);
     while (adc_calibration_status_get(ADC1)) { }
+    dma_channel_enable(DMA1_CHANNEL1, TRUE);
+    adc_ordinary_software_trigger_enable(ADC1, TRUE);
 }
 
 uint16_t ADC_DMA_GetValue(uint8_t channel)

@@ -68,7 +68,7 @@ void Timer_ClockCmd(tmr_type* TIMx, bool Enable)
         CLOCK_MAP_DEF(20)
     };
 
-    for(index = 0; index < sizeof(clock_map) / sizeof(crm_tmr_clock_map_t); index++)
+    for(index = 0; index < (int)(sizeof(clock_map) / sizeof(crm_tmr_clock_map_t)); index++)
     {
         if(TIMx == clock_map[index].tmr)
         {
